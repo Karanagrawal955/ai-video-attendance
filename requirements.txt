@@ -1,0 +1,53 @@
+# ---------------------------------------------------------------------------
+# AI Video Attendance backend - Python dependencies (Python 3.11+)
+#
+# GPU notes (READ THIS):
+#   * `insightface==2.0` pulls in the CPU `onnxruntime` package and the GUI
+#     `opencv-python` wheel as its own dependencies.  For GPU deployments you
+#     swap them afterwards (this is the official InsightFace 2.0 recipe):
+#
+#       pip uninstall -y onnxruntime opencv-python
+#       pip install onnxruntime-gpu==1.26.0 opencv-python-headless
+#
+#   The Dockerfile does exactly this automatically.  On a local machine run
+#   `scripts/setup_gpu.ps1` (Windows) or `scripts/setup_gpu.sh` (Linux/macOS).
+#
+#   RTX 50-series (Blackwell, sm_120) notes - the pins here are deliberate:
+#     * onnxruntime-gpu 1.26.0 is the NEWEST build still targeting CUDA 12
+#       + cuDNN 9 (1.27.0 moved to CUDA 13, which needs driver >= 580).
+#     * The Docker base image is CUDA 12.8.1 + cuDNN 9 (sm_120 support with
+#       the Blackwell floor driver >= 570.xx).
+#     * onnxruntime-gpu >= 1.21 is required for sm_120 (RTX 5060/5070/...).
+#   If your driver is >= 580 you may optionally use onnxruntime-gpu>=1.27
+#   with a CUDA 13 base image - see the README "GPU / CUDA" section.
+# ---------------------------------------------------------------------------
+
+# Web framework
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.30,<1.0
+pydantic>=2.9,<3.0
+pydantic-settings>=2.6,<3.0
+python-multipart>=0.0.9,<1.0
+
+# Database
+SQLAlchemy>=2.0.35,<3.0
+alembic>=1.13,<2.0
+psycopg[binary]>=3.2,<4.0
+
+# Background processing / messaging
+celery[redis]>=5.4,<6.0
+redis>=5.2,<7.0
+
+# Auth
+PyJWT>=2.9,<3.0
+
+# ML / video (insightface also installs numpy, opencv-python, onnxruntime,
+# onnx, scipy, scikit-image - see GPU note above for the runtime swap)
+insightface==2.0
+numpy>=1.26,<3.0
+
+# GPU telemetry for /system/gpu-status (provides the `pynvml` module)
+nvidia-ml-py>=12.560.30
+
+# IANA timezone database (needed by zoneinfo on Windows; harmless elsewhere)
+tzdata>=2024.1

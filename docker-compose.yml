@@ -1,0 +1,130 @@
+name: ai-video-attendance
+
+# ---------------------------------------------------------------------------
+# Services
+#   postgres + redis   - state & message bus
+#   api                - FastAPI (REST + WebSocket), runs migrations on boot
+#   inference          - THE shared GPU inference service (one model instance,
+#                        NVIDIA GPU reservation) - all cameras batch into it
+#   worker             - Celery: CAMERA_SLOTS dedicated queues for camera
+#                        pipelines + control/jobs queues (GPU reservation for
+#                        INFERENCE_MODE=inprocess debugging)
+#
+# GPU passthrough uses deploy.resources.reservations.devices (docker compose
+# v2 native).  Equivalent to `docker compose run --gpus all ...`.
+# ---------------------------------------------------------------------------
+x-app: &app
+  image: attendance-backend:latest
+  build:
+    context: .
+    args:
+      ORT_GPU_VERSION: "${ORT_GPU_VERSION:-1.26.0}"
+  env_file:
+    - .env
+  volumes:
+    - ./data:/data
+    - ./samples:/samples
+    - insightface_models:/models
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: attendance
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-attendance}"
+      POSTGRES_DB: attendance
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U attendance -d attendance"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  api:
+    <<: *app
+    command:
+      - sh
+      - -c
+      - >
+        python scripts/wait_db.py &&
+        alembic upgrade head &&
+        exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers $${API_WORKERS:-1}
+    environment:
+      DATABASE_URL: "postgresql+psycopg://attendance:${POSTGRES_PASSWORD:-attendance}@postgres:5432/attendance"
+      REDIS_URL: "redis://redis:6379/0"
+      SEED_VIDEO_PATH: "/samples/videos/lecture.mp4"
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/system/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  # The single shared GPU inference service.  Camera workers and the API send
+  # frames here over Redis; it coalesces them into batched GPU calls.
+  inference:
+    <<: *app
+    command: ["python", "-m", "app.inference.server"]
+    environment:
+      REDIS_URL: "redis://redis:6379/0"
+      INFERENCE_MODE: "redis"
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  worker:
+    <<: *app
+    command: ["bash", "scripts/run_worker.sh"]
+    environment:
+      DATABASE_URL: "postgresql+psycopg://attendance:${POSTGRES_PASSWORD:-attendance}@postgres:5432/attendance"
+      REDIS_URL: "redis://redis:6379/0"
+      CAMERA_SLOTS: "${CAMERA_SLOTS:-8}"
+      SEED_VIDEO_PATH: "/samples/videos/lecture.mp4"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      inference:
+        condition: service_started
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  pgdata:
+  redis_data:
+  insightface_models:
