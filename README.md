@@ -380,6 +380,23 @@ Takeaways:
 - `GET /system/gpu-status` shows live EMA latencies, batch fill
   (`avg_batch_frames`), VRAM and queue depth while your real streams run.
 
+### Accuracy check
+
+```bash
+# stack must be up (redis + inference + api), same DATABASE_URL as the API
+python scripts/check_accuracy.py
+```
+
+Enrolls probe identities through the production endpoint, runs transformed
+and cross-session photos plus unenrolled strangers through the GPU RPC, and
+scores everything with the production matcher (`app.matching`): genuine /
+impostor cosine distributions, TAR & FAR across a threshold sweep, rank-1
+identification, unknown-face rejection, detection coverage and RPC latency.
+
+Measured here (3 identities x 3 photos, 31 probes): genuine min **0.588** vs
+impostor max **0.138** - a clean margin around the 0.40 threshold, rank-1
+**23/23**, strangers rejected **8/8**, 0 detection failures.
+
 ---
 
 ## 10. Development
