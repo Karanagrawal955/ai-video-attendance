@@ -329,9 +329,14 @@ def test_health_and_gpu_status(client, auth_header) -> None:
 
 
 def test_root_metadata(client) -> None:
-    body = client.get("/").json()
+    body = client.get("/api").json()
     assert body["docs"] == "/docs"
     assert body["websocket"] == "/ws/live-feed"
+    # root serves the bundled web UI
+    page = client.get("/")
+    assert page.status_code == 200
+    assert "text/html" in page.headers.get("content-type", "")
+    assert "AI Video Attendance" in page.text
 
 
 # ------------------------------------------------------------------ websocket

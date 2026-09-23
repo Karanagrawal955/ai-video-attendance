@@ -1,8 +1,10 @@
-# AI Video Attendance System (Backend Only)
+# AI Video Attendance System
 
 FastAPI + WebSocket backend that marks student attendance from CCTV/video
-using face recognition on an NVIDIA GPU. **No frontend is included** - build
-your own against the REST/WS API documented at `/docs`.
+using face recognition on an NVIDIA GPU, with a **built-in web UI** served at
+`/` (login, students, cameras, attendance, live feed, system). The REST/WS
+API remains the primary interface - documented at `/docs` - so you can also
+build your own frontend against it.
 
 **Stack**: FastAPI · InsightFace `buffalo_l` (SCRFD + ArcFace, ONNX Runtime
 GPU) · OpenCV (RTSP/files) · PostgreSQL + Alembic · Celery + Redis · Docker
@@ -141,6 +143,22 @@ bash scripts/run_worker.sh                          # terminal 3 (Celery)
 python scripts/seed.py --list                       # sanity check
 pytest                                               # no services needed
 ```
+
+### Web UI
+
+The API also serves a built-in web app at **http://localhost:8000/** -
+plain HTML/JS in `app/static/`, no build step:
+
+- **Dashboard** - health checks, GPU/inference status, today's present count
+- **Students** - enroll with 3-5 photos, add photos, clear face data, delete
+- **Cameras** - add / start / stop / delete with live slot & state badges
+- **Attendance** - daily per-student summary + raw recognition log (incl. GPU ms)
+- **Live** - ongoing sessions + live WebSocket event feed (`/ws/live-feed`)
+- **System** - raw `/system/health` and `/system/gpu-status` payloads
+
+Log in with `ADMIN_USERNAME` / `ADMIN_PASSWORD` (defaults `admin`/`admin`;
+set `AUTH_REQUIRED=false` to skip login). Swagger stays at `/docs`, and the
+root metadata JSON moved to `/api`.
 
 ---
 

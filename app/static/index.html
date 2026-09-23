@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Video Attendance</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+
+  <!-- ============================== LOGIN ============================== -->
+  <div id="login-view" class="login-wrap" hidden>
+    <form id="login-form" class="card login-card">
+      <h1>&#128247; AI Video Attendance</h1>
+      <p class="muted">Sign in with your admin credentials</p>
+      <label>Username
+        <input id="login-username" autocomplete="username" required>
+      </label>
+      <label>Password
+        <input id="login-password" type="password" autocomplete="current-password" required>
+      </label>
+      <p id="login-error" class="error" hidden></p>
+      <button class="btn primary block" type="submit">Sign in</button>
+      <p class="muted small">API docs: <a href="/docs" target="_blank">/docs</a></p>
+    </form>
+  </div>
+
+  <!-- =============================== APP =============================== -->
+  <div id="app-view" class="layout" hidden>
+    <aside class="sidebar">
+      <div class="brand">&#128247; Attendance</div>
+      <nav id="nav">
+        <button class="nav-btn active" data-section="dashboard">&#128200; Dashboard</button>
+        <button class="nav-btn" data-section="students">&#128101; Students</button>
+        <button class="nav-btn" data-section="cameras">&#128249; Cameras</button>
+        <button class="nav-btn" data-section="attendance">&#128197; Attendance</button>
+        <button class="nav-btn" data-section="live">&#128225; Live</button>
+        <button class="nav-btn" data-section="system">&#9881;&#65039; System</button>
+      </nav>
+      <div class="sidebar-foot">
+        <a href="/docs" target="_blank">API docs</a>
+        <span id="version-label" class="muted"></span>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <h2 id="section-title">Dashboard</h2>
+        <div class="topbar-right">
+          <span id="user-label" class="muted"></span>
+          <button id="btn-logout" class="btn ghost">Log out</button>
+        </div>
+      </header>
+
+      <div id="toasts"></div>
+
+      <!-- ---------------------------- DASHBOARD --------------------------- -->
+      <section id="sec-dashboard">
+        <div class="stat-grid">
+          <div class="card stat"><div class="stat-label">API health</div><div id="st-health" class="stat-value">…</div><div id="st-health-sub" class="stat-sub"></div></div>
+          <div class="card stat"><div class="stat-label">Inference</div><div id="st-inference" class="stat-value">…</div><div id="st-inference-sub" class="stat-sub"></div></div>
+          <div class="card stat"><div class="stat-label">Students</div><div id="st-students" class="stat-value">…</div><div class="stat-sub">enrolled with face data</div></div>
+          <div class="card stat"><div class="stat-label">Cameras</div><div id="st-cameras" class="stat-value">…</div><div id="st-cameras-sub" class="stat-sub"></div></div>
+          <div class="card stat"><div class="stat-label">Present today</div><div id="st-present" class="stat-value">…</div><div id="st-present-sub" class="stat-sub"></div></div>
+        </div>
+        <div class="card">
+          <h3>GPU / inference detail</h3>
+          <div id="dash-gpu" class="kv muted">loading…</div>
+        </div>
+      </section>
+
+      <!-- ---------------------------- STUDENTS ---------------------------- -->
+      <section id="sec-students" hidden>
+        <div class="toolbar">
+          <input id="stu-q" placeholder="Search name or registration no.">
+          <button id="btn-enroll-toggle" class="btn primary">+ Enroll student</button>
+        </div>
+
+        <form id="enroll-form" class="card form-card" hidden>
+          <h3>Enroll student (3–5 clear face photos)</h3>
+          <div class="form-grid">
+            <label>Full name <input id="s-name" required maxlength="200"></label>
+            <label>Registration no. <input id="s-reg" required maxlength="64"></label>
+            <label>Section <input id="s-section" maxlength="64" placeholder="optional"></label>
+            <label class="file-label">Photos (3–5)
+              <input id="s-photos" type="file" accept="image/*" multiple required>
+              <span id="s-photos-count" class="muted small">no files</span>
+            </label>
+          </div>
+          <div class="form-actions">
+            <button class="btn primary" type="submit">Enroll</button>
+            <button class="btn ghost" type="button" id="btn-enroll-cancel">Cancel</button>
+            <span class="muted small">Face embeddings are computed on the GPU inference service.</span>
+          </div>
+        </form>
+
+        <div class="card">
+          <div class="card-head"><h3>Students</h3><span id="students-count" class="muted small"></span></div>
+          <table>
+            <thead><tr><th>ID</th><th>Name</th><th>Reg. no.</th><th>Section</th><th>Photos</th><th>Embeddings</th><th></th></tr></thead>
+            <tbody id="students-body"><tr><td colspan="7" class="muted">loading…</td></tr></tbody>
+          </table>
+        </div>
+        <input type="file" id="photo-input" accept="image/*" multiple hidden>
+      </section>
+
+      <!-- ---------------------------- CAMERAS ----------------------------- -->
+      <section id="sec-cameras" hidden>
+        <div class="toolbar">
+          <span class="muted">Each running camera occupies a dedicated worker slot.</span>
+          <button id="btn-camera-toggle" class="btn primary">+ Add camera</button>
+        </div>
+
+        <form id="camera-form" class="card form-card" hidden>
+          <h3>Add camera</h3>
+          <div class="form-grid">
+            <label>Name <input id="c-name" required maxlength="100"></label>
+            <label>Location <input id="c-location" maxlength="200" placeholder="optional"></label>
+            <label>RTSP URL <input id="c-rtsp" maxlength="500" placeholder="rtsp://… (or use file below)"></label>
+            <label>Video file path <input id="c-file" maxlength="550" placeholder="local file, e.g. samples/videos/demo.mp4"></label>
+            <label>Type
+              <select id="c-type">
+                <option value="entry">entry (records entries)</option>
+                <option value="exit">exit (records exits)</option>
+                <option value="both">both</option>
+              </select>
+            </label>
+            <label>Sampling rate (frames/s) <input id="c-rate" type="number" min="1" max="600" value="5"></label>
+          </div>
+          <div class="form-actions">
+            <button class="btn primary" type="submit">Create</button>
+            <button class="btn ghost" type="button" id="btn-camera-cancel">Cancel</button>
+            <span class="muted small">Provide an RTSP URL or a local video file path.</span>
+          </div>
+        </form>
+
+        <div class="card">
+          <div class="card-head"><h3>Cameras</h3><span id="cameras-count" class="muted small"></span></div>
+          <table>
+            <thead><tr><th>ID</th><th>Name</th><th>Location</th><th>Type</th><th>Source</th><th>Rate</th><th>State</th><th></th></tr></thead>
+            <tbody id="cameras-body"><tr><td colspan="8" class="muted">loading…</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- --------------------------- ATTENDANCE --------------------------- -->
+      <section id="sec-attendance" hidden>
+        <div class="toolbar">
+          <label class="inline">Date <input id="att-date" type="date"></label>
+          <label class="inline small"><input id="att-absent" type="checkbox"> include absent</label>
+          <button id="btn-att-refresh" class="btn primary">Refresh</button>
+        </div>
+
+        <div class="stat-grid">
+          <div class="card stat"><div class="stat-label">Present</div><div id="att-present" class="stat-value">–</div><div class="stat-sub">students</div></div>
+          <div class="card stat"><div class="stat-label">Ongoing</div><div id="att-ongoing" class="stat-value">–</div><div class="stat-sub">sessions now</div></div>
+          <div class="card stat"><div class="stat-label">Completed</div><div id="att-completed" class="stat-value">–</div><div class="stat-sub">sessions</div></div>
+          <div class="card stat"><div class="stat-label">Total time</div><div id="att-hours" class="stat-value">–</div><div class="stat-sub">hh:mm</div></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h3>Daily summary</h3><span id="summary-count" class="muted small"></span></div>
+          <table>
+            <thead><tr><th>Student</th><th>Reg. no.</th><th>Section</th><th>Entries</th><th>Exits</th><th>First entry</th><th>Last exit</th><th>Total</th><th>Status</th></tr></thead>
+            <tbody id="summary-body"><tr><td colspan="9" class="muted">loading…</td></tr></tbody>
+          </table>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h3>Recognition log</h3><span id="logs-count" class="muted small"></span></div>
+          <table>
+            <thead><tr><th>Time</th><th>Student</th><th>Camera</th><th>Confidence</th><th>GPU (ms)</th></tr></thead>
+            <tbody id="logs-body"><tr><td colspan="5" class="muted">loading…</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ------------------------------ LIVE ------------------------------ -->
+      <section id="sec-live" hidden>
+        <div class="toolbar">
+          <span class="ws-status"><span id="ws-dot" class="dot"></span><span id="ws-status" class="muted">connecting…</span></span>
+          <button id="btn-live-refresh" class="btn ghost">Refresh sessions</button>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h3>Ongoing sessions</h3><span id="live-count" class="muted small"></span></div>
+          <table>
+            <thead><tr><th>Student</th><th>Entry</th><th>Elapsed</th><th>Camera</th></tr></thead>
+            <tbody id="live-body"><tr><td colspan="4" class="muted">loading…</td></tr></tbody>
+          </table>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h3>Live event feed</h3><span class="muted small">WebSocket /ws/live-feed</span></div>
+          <div id="events" class="events"><div class="muted">waiting for events…</div></div>
+        </div>
+      </section>
+
+      <!-- ----------------------------- SYSTEM ----------------------------- -->
+      <section id="sec-system" hidden>
+        <div class="toolbar">
+          <span class="muted">Health, GPU telemetry and inference throughput.</span>
+          <button id="btn-sys-refresh" class="btn primary">Refresh</button>
+        </div>
+        <div class="two-col">
+          <div class="card"><h3>/system/health</h3><pre id="health-body" class="code">loading…</pre></div>
+          <div class="card"><h3>/system/gpu-status</h3><pre id="gpu-body" class="code">loading…</pre></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

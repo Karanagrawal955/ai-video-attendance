@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 import time
 import uuid
 
@@ -47,10 +48,14 @@ def _rpc(kind: str, jpegs: list[bytes], timeout: float | None = None) -> dict:
     }
     response_key = f"infer:response:{request_id}"
     timeout = timeout or settings.inference_request_timeout_s
+    # BLPOP's timeout must be an *integer* on older servers (Redis 5.x replies
+    # "timeout is not an integer or out of range" for "15.0"); ceil so we never
+    # wait less than asked and never pass 0 (0 would block forever).
+    block_s = max(1, math.ceil(timeout))
     try:
         r = rc.get_rpc_redis()
         r.lpush(settings.inference_queue_key, json.dumps(payload, separators=(",", ":")))
-        item = r.blpop(response_key, timeout=timeout)
+        item = r.blpop(response_key, timeout=block_s)
     except redis_lib.RedisError as exc:
         raise InferenceServiceDown(f"redis unavailable: {exc}") from exc
     except TimeoutError as exc:

@@ -15,7 +15,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
@@ -89,8 +89,11 @@ app.include_router(system.router)
 app.include_router(ws_router)
 
 
-@app.get("/", tags=["system"], summary="Service metadata")
-def root() -> dict:
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+INDEX_HTML = STATIC_DIR / "index.html"
+
+
+def _service_metadata() -> dict:
     return {
         "name": settings.app_name,
         "version": __version__,
@@ -100,7 +103,21 @@ def root() -> dict:
         "health": "/system/health",
         "gpu_status": "/system/gpu-status",
         "websocket": "/ws/live-feed",
+        "ui": "/",
     }
+
+
+@app.get("/", include_in_schema=False)
+def root():
+    """Serve the web UI when bundled; metadata JSON otherwise."""
+    if INDEX_HTML.exists():
+        return FileResponse(INDEX_HTML)
+    return JSONResponse(_service_metadata())
+
+
+@app.get("/api", tags=["system"], summary="Service metadata")
+def api_metadata() -> dict:
+    return _service_metadata()
 
 
 @app.exception_handler(Exception)
@@ -118,3 +135,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 photos_root = settings.photos_root
 photos_root.mkdir(parents=True, exist_ok=True)
 app.mount("/media", StaticFiles(directory=str(Path(photos_root))), name="media")
+
+# Serve the web UI assets (registered last so API routes take precedence).
+if STATIC_DIR.is_dir():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
