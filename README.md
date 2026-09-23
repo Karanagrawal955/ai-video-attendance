@@ -327,22 +327,40 @@ python scripts/benchmark.py              # GPU (CUDA if available)
 python scripts/benchmark.py --cpu        # CPU baseline, same model
 ```
 
-Expected shape of results (estimates - actual numbers depend on resolution,
-face count, batch size and driver; measure before quoting):
+Measured on this project's dev machine - **i7-14th-gen HX + RTX 4050 Laptop
+(6 GB, driver 610.x), Windows, onnxruntime-gpu 1.26.0 (CUDA 12.8 / cuDNN 9),
+insightface `buffalo_l`, det 640x640, one face per frame, `--frames 8
+--iters 20`** (run 2026-09-23). Model load assumes a warm cache (the very
+first run downloads ~400 MB of weights). The RTX 5060 deployment target is
+faster than this 4050 laptop chip - treat the GPU column as a floor.
 
-| Workload | RTX 5060 (CUDA, batched) | CPU-only (i7-14th-gen HX) |
+| Workload | GPU (RTX 4050, measured) | CPU-only (i7 HX, measured) |
 |---|---|---|
-| Detection, 640², 1 frame | ~4-8 ms | ~60-150 ms |
-| Detection, batch of 8 frames | ~12-25 ms total (~2-3 ms/frame) | ~500-1200 ms total |
-| ArcFace embedding, batch of 64 faces | ~4-8 ms total | ~100-300 ms total |
-| End-to-end frames/s (pipeline) | ~100-160 fps | ~5-10 fps |
-| Latency per camera RPC (batch 8) | ~15-30 ms | ~0.6-1.5 s |
+| Model load (warm cache) | ~5 s | ~4 s |
+| Detection, 640^2, 1 frame | 14.1 ms (p95 15.4) | 644.8 ms (p95 737.8) |
+| ArcFace embed, 1 face (in pipeline) | 11.2 ms (p50 6.5) | 1469.1 ms |
+| End-to-end, 1 frame | **26.0 ms -> 38.5 fps** | 2116.6 ms -> 0.5 fps |
+| End-to-end, batch of 8 frames | **137.5 ms -> 58.2 fps** | 8200.9 ms -> 1.0 fps |
+| Detection, batch of 8 frames | 111.5 ms (~13.9 ms/frame, serial*) | 3229.4 ms (~404 ms/frame) |
+| Embed, standalone `get_feat`, 1 face | 5.9 ms (168 faces/s) | 690 ms (1.4 faces/s) |
+| Embed, standalone `get_feat`, 32 faces | 76.4 ms (419 faces/s) | 16 687 ms (1.9 faces/s) |
+| Embed, standalone `get_feat`, 64 faces | 159.4 ms (401 faces/s) | 33 001 ms (1.9 faces/s) |
 
-Takeaway: on GPU, inference is a small fraction of the pipeline (decode +
-JPEG dominate on CPU), so 8 cameras at `sampling_rate=5` leave the GPU
-mostly idle; on CPU the same load saturates cores and queue latency spikes.
-`GET /system/gpu-status` shows live EMA latencies, batch fill
-(`avg_batch_frames`), VRAM and queue depth while your real streams run.
+\* Stock `buffalo_l`'s SCRFD graph has a static batch-1 input, so detection
+runs **serial per frame even on GPU** (`batched_detection: false` - by
+design, see section 1); embeddings still batch across frames and faces
+(64-face batch: 401 faces/s vs 168 for a single face).
+
+Takeaways:
+
+- **~60-80x end-to-end GPU speedup** measured here (26 ms vs 2117 ms per
+  frame); batched embeddings scale to ~400 faces/s, so one inference
+  process absorbs dozens of cameras with the GPU mostly idle.
+- Batching already helps on CPU (8-frame batch 8.2 s vs 16.9 s for 8
+  singles) but still caps near 1 fps - unusable for real streams, where
+  decode + queue latency would dominate instead.
+- `GET /system/gpu-status` shows live EMA latencies, batch fill
+  (`avg_batch_frames`), VRAM and queue depth while your real streams run.
 
 ---
 
