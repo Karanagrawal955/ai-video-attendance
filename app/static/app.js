@@ -222,7 +222,9 @@ async function refreshMe() {
 }
 
 function enterApp() {
-  showAuthCard("login");
+  // hide every auth card (showAuthCard(null) -> all hidden), otherwise the
+  // sign-in card stays on top of the dashboard after a successful login
+  showAuthCard(null);
   $("#app-view").hidden = false;
   $("#user-label").textContent = getToken() ? "…" : "auth disabled";
   loadDashboard();
