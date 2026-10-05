@@ -462,6 +462,30 @@ class FaceEngine:
             return None
         return cv2.resize(crop, (size, size))
 
+    def _quality_ok(self, crop: np.ndarray, det_row: np.ndarray) -> bool:
+        """Return False for blurry / too-dark / too-bright / tiny faces."""
+        try:
+            import cv2
+
+            # bbox area
+            x1, y1, x2, y2 = [float(v) for v in det_row[:4]]
+            area = max(0.0, (x2 - x1)) * max(0.0, (y2 - y1))
+            if area < float(self.cfg.face_min_area):
+                return False
+            # brightness (mean grayscale)
+            gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+            mean = float(gray.mean())
+            if mean < float(self.cfg.face_min_brightness) or mean > float(self.cfg.face_max_brightness):
+                return False
+            # sharpness (Laplacian variance)
+            lap = cv2.Laplacian(gray, cv2.CV_64F)
+            sharp = float(lap.var())
+            if sharp < float(self.cfg.face_min_sharpness):
+                return False
+        except Exception:
+            return True  # on any error, don't block
+        return True
+
     def _embed_faces(self, crops: list[np.ndarray]) -> np.ndarray:
         """ONE batched GPU call for every aligned face (chunked)."""
         if not crops:
@@ -535,6 +559,10 @@ class FaceEngine:
                 crop = self._align_face(images[frame_idx], kps, det[j])
                 if crop is None:
                     continue
+                # quality gate for occlusion/blur/low-light
+                if self.cfg.face_quality_enabled:
+                    if not self._quality_ok(crop, det[j]):
+                        continue
                 crops.append(crop)
                 meta.append((frame_idx, det[j]))
         timings.align_ms = (time.perf_counter() - t1) * 1000.0

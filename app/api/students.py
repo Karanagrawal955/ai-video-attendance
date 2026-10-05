@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
@@ -12,6 +13,7 @@ from sqlalchemy.orm import Session
 from ..models import Student
 from ..schemas import OkResponse, StudentOut, StudentUpdate
 from ..services import enrollment
+from ..config import settings
 from .deps import get_current_admin, get_db
 
 logger = logging.getLogger("app.api.students")
@@ -29,8 +31,8 @@ def _student_out(student: Student, include_embeddings: bool = False) -> StudentO
         registration_no=student.registration_no,
         section=student.section,
         photo_paths=list(student.photo_paths or []),
-        embedding_count=len(student.embeddings or []),
-        embeddings=[list(map(float, e)) for e in student.embeddings]
+        embedding_count=student.embedding_count,
+        embeddings=[list(map(float, e)) for e in student.embedding_list]
         if include_embeddings
         else None,
         created_at=student.created_at,
@@ -63,6 +65,7 @@ def create_student(
     section: Annotated[str | None, Form(max_length=64)] = None,
     photos: list[UploadFile] = File(...),
 ) -> StudentOut:
+    print(f"DEBUG: Received {len(photos)} photos", flush=True)
     data, names = [], []
     for photo in photos:
         blob = photo.file.read()
@@ -238,6 +241,61 @@ def delete_student_face(student_id: int, db: DbDep, _: AuthDep) -> OkResponse:
     student = _get_or_404(db, student_id)
     enrollment.clear_face(db, student)
     return OkResponse(detail="face data cleared")
+
+
+@router.post(
+    "/bulk-import",
+    response_model=dict,
+    summary="Bulk enroll students from CSV",
+)
+async def bulk_import_students(
+    db: DbDep,
+    _: AuthDep,
+    csv_file: UploadFile = File(...),
+    dry_run: bool = Form(default=False),
+    skip_quality_checks: bool = Form(default=False),
+) -> dict:
+    """Import students from CSV with columns: name, registration_no, section, photo_path_or_folder.
+    photo_path_or_folder is relative to DATA_DIR (e.g., 'students/STU00001' or 'students/STU00001/photo_0.jpg').
+    Returns import report with accepted/rejected per row.
+    """
+    import tempfile
+    with tempfile.NamedTemporaryFile(mode="wb", suffix=".csv", delete=False) as tmp:
+        tmp.write(await csv_file.read())
+        tmp_path = Path(tmp.name)
+
+    try:
+        results, accepted, rejected = enrollment.bulk_enroll_from_csv(
+            db,
+            tmp_path,
+            data_dir=settings.photos_root,
+            skip_quality_checks=skip_quality_checks,
+            dry_run=dry_run,
+        )
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    import_report = [
+        {
+            "row_number": r.row_number,
+            "name": r.name,
+            "registration_no": r.registration_no,
+            "section": r.section,
+            "status": r.status,
+            "reason": r.reason,
+            "photo_count": r.photo_count,
+            "accepted_embeddings": r.accepted_embeddings,
+            "student_id": r.student_id,
+        }
+        for r in results
+    ]
+
+    return {
+        "accepted": accepted,
+        "rejected": rejected,
+        "total": len(results),
+        "report": import_report,
+    }
 
 
 @router.delete(

@@ -24,7 +24,7 @@ def _ts(day: int, hour: int, minute: int = 0) -> datetime:
 def test_entry_creates_ongoing_session(db) -> None:
     from app.models import Student
 
-    student = Student(name="Ada", registration_no="R1", embeddings=[], photo_paths=[])
+    student = Student(name="Ada", registration_no="R1", embeddings="", photo_paths=[])
     db.add(student)
     db.commit()
 
@@ -41,7 +41,7 @@ def test_entry_creates_ongoing_session(db) -> None:
 def test_second_entry_same_day_is_noop(db) -> None:
     from app.models import Student
 
-    student = Student(name="Ada", registration_no="R1", embeddings=[], photo_paths=[])
+    student = Student(name="Ada", registration_no="R1", embeddings="", photo_paths=[])
     db.add(student)
     db.commit()
     cam = FakeCamera(1, "entry")
@@ -65,7 +65,7 @@ def test_second_entry_same_day_is_noop(db) -> None:
 def test_exit_closes_with_duration(db) -> None:
     from app.models import Student
 
-    student = Student(name="Ada", registration_no="R1", embeddings=[], photo_paths=[])
+    student = Student(name="Ada", registration_no="R1", embeddings="", photo_paths=[])
     db.add(student)
     db.commit()
 
@@ -87,7 +87,7 @@ def test_exit_closes_with_duration(db) -> None:
 def test_multiple_cycles_create_multiple_sessions(db) -> None:
     from app.models import Student
 
-    student = Student(name="Ada", registration_no="R1", embeddings=[], photo_paths=[])
+    student = Student(name="Ada", registration_no="R1", embeddings="", photo_paths=[])
     db.add(student)
     db.commit()
     entry = FakeCamera(1, "entry")
@@ -115,7 +115,7 @@ def test_multiple_cycles_create_multiple_sessions(db) -> None:
 def test_exit_without_entry_is_noop(db) -> None:
     from app.models import Student
 
-    student = Student(name="Ada", registration_no="R1", embeddings=[], photo_paths=[])
+    student = Student(name="Ada", registration_no="R1", embeddings="", photo_paths=[])
     db.add(student)
     db.commit()
 
@@ -130,7 +130,7 @@ def test_midnight_rollover_same_session(db) -> None:
     """Session opened 23:50 day 23, exits 00:10 day 24 -> one session, date=23."""
     from app.models import Student
 
-    student = Student(name="Ada", registration_no="R1", embeddings=[], photo_paths=[])
+    student = Student(name="Ada", registration_no="R1", embeddings="", photo_paths=[])
     db.add(student)
     db.commit()
 
@@ -154,7 +154,7 @@ def test_midnight_rollover_same_session(db) -> None:
 def test_stale_session_auto_closed_on_next_day_entry(db) -> None:
     from app.models import Student
 
-    student = Student(name="Ada", registration_no="R1", embeddings=[], photo_paths=[])
+    student = Student(name="Ada", registration_no="R1", embeddings="", photo_paths=[])
     db.add(student)
     db.commit()
     entry = FakeCamera(1, "entry")
@@ -180,7 +180,7 @@ def test_stale_session_auto_closed_on_next_day_entry(db) -> None:
 def test_both_camera_closes_then_reopens(db) -> None:
     from app.models import Student
 
-    student = Student(name="Ada", registration_no="R1", embeddings=[], photo_paths=[])
+    student = Student(name="Ada", registration_no="R1", embeddings="", photo_paths=[])
     db.add(student)
     db.commit()
     gate = FakeCamera(7, "both")
@@ -206,7 +206,7 @@ def test_summary_totals_include_ongoing(db, monkeypatch: pytest.MonkeyPatch) -> 
     from app.models import Student
     from app.services import attendance as svc
 
-    student = Student(name="Ada", registration_no="R1", embeddings=[], photo_paths=[])
+    student = Student(name="Ada", registration_no="R1", embeddings="", photo_paths=[])
     db.add(student)
     db.commit()
 

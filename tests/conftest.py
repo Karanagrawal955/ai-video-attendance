@@ -11,6 +11,7 @@ test, so no external services are required to run the suite.
 from __future__ import annotations
 
 import os
+import sys
 import tempfile
 from pathlib import Path
 
@@ -19,7 +20,17 @@ _TMP_BASE = Path(os.environ.get("TEMP", tempfile.gettempdir())) / "opencode" / "
 _TMP_BASE.mkdir(parents=True, exist_ok=True)
 _DB_PATH = _TMP_BASE / f"attendance_{os.getpid()}.db"
 if _DB_PATH.exists():
-    _DB_PATH.unlink()
+    try:
+        _DB_PATH.unlink()
+    except PermissionError:
+        # Windows holds the file after a previous run; fall back to a fresh name
+        import time as _t
+        _DB_PATH = _TMP_BASE / f"attendance_{os.getpid()}_{int(_t.time()*1000)}.db"
+        if _DB_PATH.exists():
+            try:
+                _DB_PATH.unlink()
+            except PermissionError:
+                pass
 
 os.environ.update(
     {
@@ -36,6 +47,10 @@ os.environ.update(
         "FORCE_CPU": "true",
         "INFERENCE_MODE": "redis",
         "DEDUP_WINDOW_SECONDS": "120",
+        "CONFIRMATION_FRAMES": "1",
+        "CONFIRMATION_WINDOW_S": "5.0",
+        "FACE_QUALITY_ENABLED": "false",
+        "LOG_UNKNOWN_FACES": "true",
     }
 )
 
@@ -56,6 +71,15 @@ def fake_redis(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(rc, "get_redis", lambda: fake)
     monkeypatch.setattr(rc, "get_rpc_redis", lambda: fake)
     yield fake
+
+
+@pytest.fixture(autouse=True)
+def _clear_confirm_buffer():
+    from app.pipeline import camera_task as _ct
+
+    _ct._CONFIRM_BUFFER.clear()
+    yield
+    _ct._CONFIRM_BUFFER.clear()
 
 
 @pytest.fixture(autouse=True)
@@ -112,16 +136,53 @@ def fake_embed(monkeypatch: pytest.MonkeyPatch):
     """Stub the GPU embedding RPC: one deterministic vector per photo."""
     import app.services.enrollment as enrollment
 
+    counter = {"n": 0}
+
     def _embed(photos: list[bytes]) -> list[dict]:
         out = []
-        for i, _ in enumerate(photos):
+        for _ in photos:
             vec = [0.0] * 512
-            vec[i % 512] = 1.0
+            idx = counter["n"] % 512
+            vec[idx] = 1.0
             out.append({"ok": True, "embedding": vec, "score": 0.99, "bbox": [0, 0, 1, 1]})
+            counter["n"] += 1
         return out
 
     monkeypatch.setattr(enrollment, "_embed_photos", _embed)
     return _embed
+
+
+@pytest.fixture(scope="session")
+def test_video_path() -> Path:
+    """Return path to the synthetic multi-student test video.
+
+    - Looks for tests/assets/test_multi.mp4 (built by scripts/make_test_video.py).
+    - If ffmpeg is not on PATH, prints a clear message but does NOT fail when
+      OpenCV can still read the file (cv2 bundles its own ffmpeg dll).
+    - Skips gracefully when the video is missing or unreadable.
+    """
+    import shutil
+    import cv2
+
+    video = Path(__file__).resolve().parent / "assets" / "test_multi.mp4"
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None:
+        print(
+            "[test_video_path] ffmpeg not found on PATH — "
+            "using OpenCV fallback (cv2.VideoCapture bundles its own ffmpeg). "
+            "Generate the video with: python scripts/make_test_video.py",
+            file=sys.stderr if hasattr(sys, "stderr") else None,
+        )
+    if not video.exists():
+        pytest.skip(
+            f"test video missing at {video} — run: python scripts/make_test_video.py"
+        )
+    cap = cv2.VideoCapture(str(video))
+    if not cap.isOpened():
+        cap.release()
+        pytest.skip(f"cannot open {video} with cv2.VideoCapture — codec or file missing")
+    cap.release()
+    return video
 
 
 def make_photos(n: int = 3) -> list[tuple[str, tuple[str, bytes, str]]]:

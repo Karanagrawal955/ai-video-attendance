@@ -14,6 +14,8 @@ venv/
 # Runtime data
 data/*
 !data/.gitkeep
+!data/README.md
+!data/ground_truth.example.csv
 samples/videos/*
 !samples/videos/.gitkeep
 samples/faces/*
@@ -29,4 +31,67 @@ htmlcov/
 # Editors
 .vscode/
 .idea/
-*.swp
+*.swp/
+
+# Databases and debug artifacts
+test_*.db
+*.sqlite
+*.db
+debug_*.py
+test_*.csv
+test_*.db
+import_report*.csv
+run_bulk_timing.py
+run_period_e2e.py
+show_imports.py
+test_*.py
+test_bulk*.db
+test_*.db
+test_bulk*.csv
+test_bulk*.csv
+test_*.db
+test_students.csv
+test_bulk_students.csv
+test_debug*.py
+debug_*.py
+
+# Biometric / media artifacts - never commit these
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.webp
+*.mp4
+*.mov
+*.avi
+*.npy
+*.npz
+*.onnx
+*.joblib
+*.pkl
+*.parquet
+*.pem
+*.key
+!app/static/**
+
+# Debug artifacts
+debug_*.py
+test_*.db
+test_bulk*.db
+test_exact_pytest.db
+test_final*.db
+test_debug*.db
+test_pytest*.db
+test_quality.db
+test_quality2.db
+test_isolated.db
+test_cli.db
+test_bulk*.db
+test_bulk_students.csv
+test_bulk_bad.csv
+import_report*.csv
+# local build artifacts
+*.zip
+setup_clean.txt
+build_handoff.py

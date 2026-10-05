@@ -1,0 +1,4 @@
+# Dev / test extras (pinned, verified with `pytest -q` => 69 passed)
+pytest==8.3.4
+httpx==0.27.2
+fakeredis==2.38.0

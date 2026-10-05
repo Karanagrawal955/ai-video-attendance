@@ -1,0 +1,4 @@
+masked_name,masked_id,status,present,first_seen_frame,last_seen_frame,first_seen_time,last_seen_time,duration,frame_count,best_score,avg_score,is_late,left_early,present,clip_label
+P1,...001,Present,True,1,240,0:00:00.033333,0:00:08,0:00:07.966667,126,0.9844,0.9392,False,False,True,"synthetic clip built from enrolled photos (scripts/make_test_video.py): shows the flow, not real-CCTV accuracy"
+P2,...002,Present (Late),True,49,240,0:00:01.633333,0:00:08,0:00:06.366667,138,0.9612,0.921,True,False,True,"synthetic clip built from enrolled photos (scripts/make_test_video.py): shows the flow, not real-CCTV accuracy"
+P3,...003,Present (Late) (Left Early),True,114,177,0:00:03.800000,0:00:05.900000,0:00:02.100000,64,0.9658,0.914,True,True,True,"synthetic clip built from enrolled photos (scripts/make_test_video.py): shows the flow, not real-CCTV accuracy"

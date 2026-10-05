@@ -10,8 +10,8 @@ enrollment)::
 
     # enroll one student from a folder of 3-5 photos
     docker compose exec api python scripts/seed.py \
-        --enroll /samples/faces/21CSE001 --name "Ada Lovelace" \
-        --registration-no 21CSE001 --section CSE-A
+        --enroll /samples/faces/STU00001 --name "Student Three" \
+        --registration-no STU00001 --section CSE-A
 
     # enroll every subfolder: samples/faces/<registration_no>/*.jpg
     docker compose exec api python scripts/seed.py --enroll-dir /samples/faces
@@ -87,10 +87,19 @@ def _register_camera(db, args: argparse.Namespace) -> Camera:
 
 
 def _photos_in(folder: Path) -> list[tuple[bytes, str]]:
+    """Collect reference photos, capped at the enrollment maximum.
+
+    Real datasets often ship more than ``max_reference_photos`` images per
+    identity; enrollment rejects those, so we deterministically take the
+    first ``max_reference_photos`` instead of failing the whole folder.
+    """
     out = []
+    hi = settings.max_reference_photos
     for path in sorted(folder.iterdir()):
         if path.is_file() and path.suffix.lower() in PHOTO_EXTS:
             out.append((path.read_bytes(), path.name))
+            if len(out) >= hi:
+                break
     return out
 
 

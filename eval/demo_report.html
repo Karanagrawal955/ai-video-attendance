@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Demo Attendance Report</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        table { border-collapse: collapse; width: 100%; margin-bottom: 30px; }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        th { background-color: #4CAF50; color: white; }
+        tr:nth-child(even) { background-color: #f2f2f2; }
+        .present { color: green; font-weight: bold; }
+        .absent { color: red; }
+        .late { color: orange; }
+        .early { color: purple; }
+        .summary { background: #f5f5f5; padding: 20px; border-radius: 5px; margin-bottom: 30px; }
+        img { max-width: 100%; height: auto; margin: 10px; border: 1px solid #ddd; }
+        .frame-gallery { display: flex; flex-wrap: wrap; gap: 10px; }
+        .banner { background: #fff3cd; border: 1px solid #ffecb5; padding: 14px 18px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <h1>Demo Attendance Report</h1>
+    <p class="banner"><strong>Clip:</strong> synthetic clip built from enrolled photos (scripts/make_test_video.py): shows the flow, not real-CCTV accuracy</p>
+    <div class="summary">
+        <h2>Summary</h2>
+        <p><strong>Total Students:</strong> 3</p>
+        <p><strong>Present:</strong> <span class="present">3</span></p>
+        <p><strong>Absent:</strong> <span class="absent">0</span></p>
+        <p><strong>Late:</strong> <span class="late">2</span></p>
+        <p><strong>Left Early:</strong> <span class="early">1</span></p>
+        <p><strong>Unknown Faces:</strong> 0</p>
+        <p><strong>Frames Processed:</strong> 240</p>
+        <p><strong>Annotated Frames Saved:</strong> 7</p>
+    </div>
+    
+    <h2>Per-Student Attendance</h2>
+    <table>
+        <tr>
+            <th>Masked Name</th>
+            <th>Masked ID</th>
+            <th>Status</th>
+            <th>Present</th>
+            <th>First Seen</th>
+            <th>Last Seen</th>
+            <th>Duration</th>
+            <th>Frames</th>
+            <th>Best Score</th>
+            <th>Avg Score</th>
+            <th>Late</th>
+            <th>Left Early</th>
+        </tr>
+
+        <tr>
+            <td>P1</td>
+            <td>...001</td>
+            <td class="present">Present</td>
+            <td>Yes</td>
+            <td>0:00:00.033333</td>
+            <td>0:00:08</td>
+            <td>0:00:07.966667</td>
+            <td>126</td>
+            <td>0.984</td>
+            <td>0.939</td>
+            <td>No</td>
+            <td>No</td>
+        </tr>
+
+        <tr>
+            <td>P2</td>
+            <td>...002</td>
+            <td class="late">Present (Late)</td>
+            <td>Yes</td>
+            <td>0:00:01.633333</td>
+            <td>0:00:08</td>
+            <td>0:00:06.366667</td>
+            <td>138</td>
+            <td>0.961</td>
+            <td>0.921</td>
+            <td>Yes</td>
+            <td>No</td>
+        </tr>
+
+        <tr>
+            <td>P3</td>
+            <td>...003</td>
+            <td class="late">Present (Late) (Left Early)</td>
+            <td>Yes</td>
+            <td>0:00:03.800000</td>
+            <td>0:00:05.900000</td>
+            <td>0:00:02.100000</td>
+            <td>64</td>
+            <td>0.966</td>
+            <td>0.914</td>
+            <td>Yes</td>
+            <td>Yes</td>
+        </tr>
+
+    </table>
+    
+    <h2>Annotated Frames</h2>
+    <div class="frame-gallery">
+        <img src="frame_000001.jpg" alt="frame_000001.jpg" width="320">
+        <img src="frame_000040.jpg" alt="frame_000040.jpg" width="320">
+        <img src="frame_000080.jpg" alt="frame_000080.jpg" width="320">
+        <img src="frame_000120.jpg" alt="frame_000120.jpg" width="320">
+        <img src="frame_000160.jpg" alt="frame_000160.jpg" width="320">
+        <img src="frame_000200.jpg" alt="frame_000200.jpg" width="320">
+        <img src="frame_000240.jpg" alt="frame_000240.jpg" width="320">
+
+    </div>
+</body>
+</html>

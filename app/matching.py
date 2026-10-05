@@ -18,6 +18,7 @@ from sqlalchemy import select
 from .config import settings
 from .db import SessionLocal
 from .models import Student
+from .crypto import decrypt_embeddings
 from . import redis_client
 
 logger = logging.getLogger("app.matching")
@@ -39,10 +40,15 @@ def _l2_normalize(mat: np.ndarray) -> np.ndarray:
 class EmbeddingIndex:
     """In-memory student embedding index with version-based cache invalidation."""
 
-    def __init__(self, threshold: float | None = None, scan_top: int = 64):
+    def __init__(self, threshold: float | None = None, scan_top: int = 64,
+                 margin: float | None = None):
         self.threshold = (
             threshold if threshold is not None else settings.recognition_threshold
         )
+        self.margin = (
+            margin if margin is not None else settings.recognition_margin
+        )
+        self.duplicate_sim = settings.duplicate_identity_sim
         self.scan_top = scan_top
         self.flat: np.ndarray | None = None  # (N, 512) float32, L2-normalised
         self.row_student_ids: np.ndarray | None = None  # (N,) int64
@@ -56,14 +62,20 @@ class EmbeddingIndex:
     # ------------------------------------------------------------- building
     def refresh(self, version: str | None = None) -> None:
         """(Re)load every student embedding from the database."""
-        rows: list[tuple[int, list]] = []
+        rows: list[tuple[int, str]] = []
         with SessionLocal() as db:
             result = db.execute(select(Student.id, Student.embeddings))
-            rows = [(int(r[0]), r[1] or []) for r in result]
+            rows = [(int(r[0]), r[1] or "") for r in result]
 
         vectors: list[np.ndarray] = []
         sids: list[int] = []
-        for sid, embeddings in rows:
+        for sid, encrypted_embs in rows:
+            if not encrypted_embs:
+                continue
+            try:
+                embeddings = decrypt_embeddings(encrypted_embs)
+            except Exception:
+                continue
             for emb in embeddings:
                 try:
                     arr = np.asarray(emb, dtype=np.float32).ravel()
@@ -115,7 +127,15 @@ class EmbeddingIndex:
 
     # ------------------------------------------------------------- matching
     def match(self, embedding: np.ndarray | list[float]) -> MatchResult:
-        """Best-match a single 512-d probe against every enrolled student."""
+        """Best-match a single 512-d probe against every enrolled student.
+
+        Acceptance rule (single threshold everywhere):
+          1. best per-student score >= settings.recognition_threshold
+          2. best - runner-up >= settings.recognition_margin, where the
+             runner-up skips students whose gallery is a near-duplicate of the
+             winner (same human enrolled twice -> would otherwise always
+             produce a ~0 margin and reject genuine matches).
+        """
         if self.flat is None or self.row_student_ids is None:
             return MatchResult(student_id=None, score=-1.0)
         probe = np.asarray(embedding, dtype=np.float32).ravel()
@@ -127,15 +147,51 @@ class EmbeddingIndex:
         if sims.size == 0:
             return MatchResult(student_id=None, score=-1.0)
 
-        top = min(self.scan_top, sims.size)
-        # argpartition avoids a full sort for large registries.
-        idx = np.argpartition(sims, -top)[-top:]
-        idx = idx[np.argsort(sims[idx])[::-1]]
-        best_score = float(sims[idx[0]])
-        for i in idx:
-            score = float(sims[i])
-            if score >= self.threshold:
-                return MatchResult(
-                    student_id=int(self.row_student_ids[i]), score=score
-                )
-        return MatchResult(student_id=None, score=best_score)
+        # per-student best score (any of their reference photos)
+        sids = self.row_student_ids
+        uniq, inverse = np.unique(sids, return_inverse=True)
+        best_scores = np.full(uniq.size, -1.0, dtype=np.float64)
+        np.maximum.at(best_scores, inverse, sims)
+
+        b = int(np.argmax(best_scores))
+        best_score = float(best_scores[b])
+        if best_score < self.threshold:
+            return MatchResult(student_id=None, score=best_score)
+
+        best_sid = int(uniq[b])
+        best_rows = self.flat[sids == best_sid]
+
+        # runner-up over identities that are NOT duplicates of the winner
+        second: float | None = None
+        for k in range(uniq.size):
+            if k == b:
+                continue
+            rows = self.flat[sids == uniq[k]]
+            if best_rows.shape[0] and rows.shape[0]:
+                dup = float((best_rows @ rows.T).max())
+                if dup >= self.duplicate_sim:
+                    continue  # same human, two student rows
+            if second is None or best_scores[k] > second:
+                second = float(best_scores[k])
+
+        if second is not None and (best_score - second) < self.margin:
+            logger.debug(
+                "margin rule rejected match",
+                extra={
+                    "best": round(best_score, 4),
+                    "second": round(second, 4),
+                    "margin": self.margin,
+                },
+            )
+            return MatchResult(student_id=None, score=best_score)
+        return MatchResult(student_id=best_sid, score=best_score)
+
+
+def cosine_similarity_batch(embeddings: np.ndarray, probes: np.ndarray) -> np.ndarray:
+    """
+    Compute cosine similarity between all embeddings and probes.
+    embeddings: (N, 512) - already L2-normalized
+    probes: (M, 512) - already L2-normalized
+    Returns: (M, N) similarity matrix
+    """
+    return probes @ embeddings.T  # (M, N)

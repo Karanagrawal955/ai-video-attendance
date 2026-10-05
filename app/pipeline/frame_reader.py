@@ -69,6 +69,10 @@ class FrameReader(threading.Thread):
         self.frames_sampled = 0
         self.dropped = 0
         self.reconnects = 0
+        # file-mode timeline (set per _open)
+        self._file_fps: float | None = None
+        self._file_start_pts_ms: float | None = None
+        self._opened_at: float | None = None
 
     # ------------------------------------------------------------------ run
     def run(self) -> None:
@@ -103,6 +107,7 @@ class FrameReader(threading.Thread):
                 continue
 
             delay = self.reconnect_initial_delay_s
+            self._opened_at = opened_at
             if self.reconnects:
                 logger.info(
                     "stream reconnected",
@@ -142,8 +147,15 @@ class FrameReader(threading.Thread):
                 if (index - 1) % self.sampling_rate != 0:
                     continue  # CPU-side sampling before any GPU work
                 self.frames_sampled += 1
+                # File sources use media timeline (opened_at + frame_index/fps)
+                # so recorded-video attendance timestamps reflect scene time, not
+                # wall-clock decode time.
+                if self.is_file and self._file_fps and self._file_fps > 0 and self._opened_at is not None:
+                    ts = self._opened_at + (index - 1) / self._file_fps
+                else:
+                    ts = time.time()
                 self._push(
-                    FramePacket(seq=self.frames_sampled, ts=time.time(), image=frame)
+                    FramePacket(seq=self.frames_sampled, ts=ts, image=frame)
                 )
 
             cap.release()
@@ -188,7 +200,19 @@ class FrameReader(threading.Thread):
             if not opened:
                 cap.release()
                 return None, time.time()
-            return cap, time.time()
+            opened_at = time.time()
+            if self.is_file:
+                try:
+                    fps = cap.get(cv2.CAP_PROP_FPS)
+                    start_pts = cap.get(cv2.CAP_PROP_POS_MSEC)
+                    self._file_fps = float(fps) if fps and fps > 0 else 30.0
+                    self._file_start_pts_ms = float(start_pts) if start_pts is not None else 0.0
+                    self._opened_at = opened_at
+                except Exception:
+                    self._file_fps = 30.0
+                    self._file_start_pts_ms = 0.0
+                    self._opened_at = opened_at
+            return cap, opened_at
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "VideoCapture open raised: %s", extra={"camera_id": self.camera_id}

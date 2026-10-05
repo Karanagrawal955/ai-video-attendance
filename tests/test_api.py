@@ -51,7 +51,7 @@ def test_token_flow(client) -> None:
 def test_student_crud(client, auth_header, fake_embed) -> None:
     created = client.post(
         "/students",
-        data={"name": "Ada Lovelace", "registration_no": "21CSE001", "section": "CSE-A"},
+        data={"name": "Student Three", "registration_no": "STU00001", "section": "CSE-A"},
         files=make_photos(3),
         headers=auth_header,
     )
@@ -64,7 +64,7 @@ def test_student_crud(client, auth_header, fake_embed) -> None:
     # duplicate registration no
     dup = client.post(
         "/students",
-        data={"name": "Ada2", "registration_no": "21CSE001"},
+        data={"name": "Ada2", "registration_no": "STU00001"},
         files=make_photos(3),
         headers=auth_header,
     )
@@ -73,7 +73,7 @@ def test_student_crud(client, auth_header, fake_embed) -> None:
     # too few photos
     few = client.post(
         "/students",
-        data={"name": "X", "registration_no": "X1"},
+        data={"name": "X", "registration_no": "REG0009"},
         files=make_photos(2),
         headers=auth_header,
     )
@@ -88,7 +88,7 @@ def test_student_crud(client, auth_header, fake_embed) -> None:
 
     fetched = client.get(f"/students/{sid}", headers=auth_header)
     assert fetched.status_code == 200
-    assert fetched.json()["name"] == "Ada Lovelace"
+    assert fetched.json()["name"] == "Student Three"
 
     updated = client.put(
         f"/students/{sid}",
@@ -222,8 +222,8 @@ def _seed_attendance(db):
     from app.services.attendance import process_recognition
 
     student = Student(
-        name="Grace Hopper", registration_no="21CSE002", section="CSE-A",
-        embeddings=[], photo_paths=[],
+        name="Student Four", registration_no="21CSE002", section="CSE-A",
+        embeddings="", photo_paths=[],
     )
     entry = Camera(name="Gate A", type="entry", file_path="x.mp4", sampling_rate=5)
     exit_cam = Camera(name="Gate B", type="exit", file_path="y.mp4", sampling_rate=5)
@@ -297,7 +297,7 @@ def test_live_shows_ongoing(client, auth_header, db) -> None:
     from app.timeutil import utcnow
 
     student = Student(name="Alan", registration_no="21CSE003",
-                      embeddings=[], photo_paths=[])
+                      embeddings="", photo_paths=[])
     gate = Camera(name="Turnstile", type="entry", file_path="z.mp4", sampling_rate=5)
     db.add_all([student, gate])
     db.commit()

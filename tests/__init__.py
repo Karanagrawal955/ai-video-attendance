@@ -1,0 +1,1 @@
+"""AI video attendance test suite."""

@@ -1,0 +1,8 @@
+person_id,name,registration_no,section,photo_folder,clip_id,frame
+P1,Example Student One,EXAM0001,CSE-A,students/EXAM0001,clip_a,10
+P1,Example Student One,EXAM0001,CSE-A,students/EXAM0001,clip_a,40
+P1,Example Student One,EXAM0001,CSE-A,students/EXAM0001,clip_a,70
+P2,Example Student Two,EXAM0002,CSE-B,students/EXAM0002,clip_a,120
+P2,Example Student Two,EXAM0002,CSE-B,students/EXAM0002,clip_a,150
+P3,Example Student Three,EXAM0003,CSE-A,students/EXAM0003,clip_a,180
+P3,Example Student Three,EXAM0003,CSE-A,students/EXAM0003,clip_a,210

@@ -38,6 +38,8 @@ h3 { font-size: 15px; }
 }
 .login-card { width: 340px; }
 .login-card label { display: block; margin: 10px 0 4px; color: var(--muted); font-size: 13px; }
+.login-alt { display: flex; gap: 8px; margin-top: 10px; }
+.login-alt .btn { flex: 1 1 auto; }
 
 /* ---------------------------------------------------------- layout */
 .layout { display: flex; min-height: 100vh; }
@@ -63,12 +65,12 @@ h3 { font-size: 15px; }
 .topbar-right { display: flex; align-items: center; gap: 10px; }
 
 /* ---------------------------------------------------------- controls */
-input, select {
+input, select, textarea {
   background: var(--panel2); color: var(--text);
   border: 1px solid var(--border); border-radius: 8px;
   padding: 8px 10px; font: inherit; width: 100%;
 }
-input:focus, select:focus { outline: 1px solid var(--accent); }
+input:focus, select:focus, textarea:focus { outline: 1px solid var(--accent); }
 label { display: block; }
 .btn {
   border: 1px solid var(--border); background: var(--panel2); color: var(--text);
@@ -113,7 +115,7 @@ td .row-actions { display: flex; gap: 6px; justify-content: flex-end; }
 .form-card { border-left: 3px solid var(--accent); }
 .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
 .form-grid label { color: var(--muted); font-size: 12px; }
-.form-grid input, .form-grid select { margin-top: 4px; color: var(--text); }
+.form-grid input, .form-grid select, .form-grid textarea { margin-top: 4px; color: var(--text); }
 .form-actions { display: flex; gap: 10px; align-items: center; margin-top: 14px; }
 .file-label input[type="file"] { margin-top: 4px; color: var(--text); }
 

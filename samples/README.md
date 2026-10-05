@@ -25,7 +25,7 @@ FFmpeg. For RTSP CCTV use `--rtsp rtsp://user:pass@camera-ip/stream1` instead.
 
 ```
 faces/
-├── 21CSE001/          <- registration number = folder name
+├── STU00001/          <- registration number = folder name
 │   ├── front.jpg       <- 3-5 clear, front-facing photos
 │   ├── left.jpg
 │   └── right.jpg

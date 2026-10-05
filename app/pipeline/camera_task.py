@@ -42,6 +42,45 @@ from ..services.events import (
 
 logger = logging.getLogger("app.pipeline.camera")
 
+# K-of-N confirmation buffers: key f"{camera_id}:{student_id}" -> list[ts]
+_CONFIRM_BUFFER: dict[str, list[float]] = {}
+
+
+def _confirm_pass(camera_id: int, student_id: int, ts: float) -> bool:
+    """Require K sightings within T seconds before confirming."""
+    k = int(settings.confirmation_frames)
+    window = float(settings.confirmation_window_s)
+    if k <= 1:
+        return True
+    key = f"{camera_id}:{student_id}"
+    buf = _CONFIRM_BUFFER.get(key)
+    if buf is None:
+        buf = []
+        _CONFIRM_BUFFER[key] = buf
+    buf.append(ts)
+    # prune outside window
+    cutoff = ts - window
+    # keep only recent
+    # in-place filter
+    buf[:] = [t for t in buf if t >= cutoff]
+    if len(buf) >= k:
+        # confirmed — clear for next cycle
+        buf.clear()
+        return True
+    return False
+
+
+def _unknown_hash(embedding) -> str:  # noqa: ANN001
+    try:
+        import hashlib
+        import json as _json
+
+        # stable hash of first 16 floats truncated
+        payload = _json.dumps(list(embedding[:16]), separators=(",", ":"))
+        return hashlib.md5(payload.encode()).hexdigest()[:8]
+    except Exception:
+        return "generic"
+
 
 def _should_stop(r: redis_lib.Redis, camera_id: int) -> bool:
     try:
@@ -107,7 +146,7 @@ def _handle_faces(
 
         if match.student_id is None:
             if settings.log_unknown_faces and rc.dedup_pass(
-                r, camera.id, "unknown"
+                r, camera.id, f"unknown:{_unknown_hash(embedding)}"
             ):
                 db.add(
                     RecognitionLog(
@@ -127,13 +166,49 @@ def _handle_faces(
                         inference_ms=inference_ms,
                     ),
                 )
+                # alert for unknown face
+                try:
+                    from ..services import alerts as _alerts
+
+                    _alerts.create_alert(
+                        db,
+                        r,
+                        type="unknown_face",
+                        severity="high",
+                        payload={"confidence": match.score, "camera": camera.name},
+                        camera_id=camera.id,
+                    )
+                except Exception:
+                    pass
                 events += 1
             continue
 
         matched += 1
-        # Dedup window: one event per (camera, student) - controls DB growth
-        # AND prevents repeated attendance transitions.
-        if not rc.dedup_pass(r, camera.id, f"stu:{match.student_id}"):
+        # low-confidence alert (even if dedup will suppress the event)
+        if float(match.score) < 0.55:
+            try:
+                from ..services import alerts as _alerts
+
+                # dedup low-confidence alerts per student/camera to avoid spam
+                if rc.dedup_pass(r, camera.id, f"alert:lowconf:{match.student_id}", window=300):
+                    _alerts.create_alert(
+                        db,
+                        r,
+                        type="low_confidence",
+                        severity="low",
+                        payload={"score": float(match.score), "camera": camera.name},
+                        camera_id=camera.id,
+                        student_id=int(match.student_id),
+                    )
+            except Exception:
+                pass
+        # K-of-N confirmation for robustness to spurious single-frame matches
+        if not _confirm_pass(camera.id, int(match.student_id), float(packet.ts)):
+            continue
+        # Dedup window: one event per (camera, student, camera-type) - controls
+        # DB growth while allowing entry/exit at the same "both" camera without
+        # one overwriting the other's dedup window.
+        if not rc.dedup_pass(r, camera.id, f"stu:{match.student_id}:{camera.type}"):
             if settings.dedup_log_all:
                 db.add(
                     RecognitionLog(
@@ -280,6 +355,20 @@ def run_camera_pipeline(camera_id: int, slot: int) -> dict:
                     backoff,
                     extra={"camera_id": camera_id},
                 )
+                if rpc_failures == 3:
+                    try:
+                        from ..services import alerts as _alerts
+
+                        _alerts.create_alert(
+                            db,
+                            r,
+                            type="pipeline_error",
+                            severity="high",
+                            payload={"error": str(exc), "failures": rpc_failures},
+                            camera_id=camera_id,
+                        )
+                    except Exception:
+                        pass
                 stop_event.wait(backoff)
                 continue
 

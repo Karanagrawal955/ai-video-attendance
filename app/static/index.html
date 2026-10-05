@@ -12,7 +12,7 @@
   <div id="login-view" class="login-wrap" hidden>
     <form id="login-form" class="card login-card">
       <h1>&#128247; AI Video Attendance</h1>
-      <p class="muted">Sign in with your admin credentials</p>
+      <p class="muted">Sign in with your account</p>
       <label>Username
         <input id="login-username" autocomplete="username" required>
       </label>
@@ -20,8 +20,61 @@
         <input id="login-password" type="password" autocomplete="current-password" required>
       </label>
       <p id="login-error" class="error" hidden></p>
+      <p id="login-info" class="muted small" hidden></p>
       <button class="btn primary block" type="submit">Sign in</button>
+      <div class="login-alt">
+        <button class="btn ghost" type="button" id="btn-show-register">Register</button>
+        <button class="btn ghost" type="button" id="btn-show-forgot">Forgot password?</button>
+      </div>
       <p class="muted small">API docs: <a href="/docs" target="_blank">/docs</a></p>
+    </form>
+  </div>
+
+  <!-- ============================ REGISTER ============================= -->
+  <div id="register-view" class="login-wrap" hidden>
+    <form id="register-form" class="card login-card">
+      <h1>&#128100; Register</h1>
+      <p class="muted">New accounts are reviewed and approved by the super admin</p>
+      <label>Username
+        <input id="reg-username" autocomplete="username" minlength="3" maxlength="100"
+               pattern="[A-Za-z0-9_.\-]{3,100}" required>
+      </label>
+      <label>Display name
+        <input id="reg-display" maxlength="200" placeholder="optional">
+      </label>
+      <label>Password
+        <input id="reg-password" type="password" autocomplete="new-password"
+               minlength="8" required>
+      </label>
+      <label>Confirm password
+        <input id="reg-confirm" type="password" autocomplete="new-password"
+               minlength="8" required>
+      </label>
+      <p class="muted small">Minimum 8 characters. Only the super admin can set or change a password afterwards.</p>
+      <p id="register-error" class="error" hidden></p>
+      <button class="btn primary block" type="submit">Create account</button>
+      <div class="login-alt">
+        <button class="btn ghost" type="button" id="btn-register-back">&#8592; Back to sign in</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- ========================= FORGOT PASSWORD ========================= -->
+  <div id="forgot-view" class="login-wrap" hidden>
+    <form id="forgot-form" class="card login-card">
+      <h1>&#128274; Forgot password</h1>
+      <p class="muted">Your request is sent to the super admin, who sets the new password</p>
+      <label>Username
+        <input id="forgot-username" autocomplete="username" required>
+      </label>
+      <label>Why do you need a reset?
+        <textarea id="forgot-reason" maxlength="500" rows="3" placeholder="optional"></textarea>
+      </label>
+      <p id="forgot-error" class="error" hidden></p>
+      <button class="btn primary block" type="submit">Send request</button>
+      <div class="login-alt">
+        <button class="btn ghost" type="button" id="btn-forgot-back">&#8592; Back to sign in</button>
+      </div>
     </form>
   </div>
 
@@ -35,6 +88,7 @@
         <button class="nav-btn" data-section="cameras">&#128249; Cameras</button>
         <button class="nav-btn" data-section="attendance">&#128197; Attendance</button>
         <button class="nav-btn" data-section="live">&#128225; Live</button>
+        <button class="nav-btn" data-section="users" id="nav-users" hidden>&#128100; Users</button>
         <button class="nav-btn" data-section="system">&#9881;&#65039; System</button>
       </nav>
       <div class="sidebar-foot">
@@ -193,6 +247,62 @@
         <div class="card">
           <div class="card-head"><h3>Live event feed</h3><span class="muted small">WebSocket /ws/live-feed</span></div>
           <div id="events" class="events"><div class="muted">waiting for events…</div></div>
+        </div>
+      </section>
+
+      <!-- ------------------------------ USERS ----------------------------- -->
+      <section id="sec-users" hidden>
+        <div class="toolbar">
+          <span class="muted">Super admin only: approve accounts, set credentials, resolve password requests.</span>
+          <button id="btn-users-refresh" class="btn primary">Refresh</button>
+        </div>
+
+        <form id="credential-form" class="card form-card" hidden>
+          <h3 id="cred-title">Set credentials</h3>
+          <div class="form-grid">
+            <input type="hidden" id="cred-mode" value="user">
+            <input type="hidden" id="cred-user-id">
+            <input type="hidden" id="cred-request-id">
+            <label>Username
+              <input id="cred-username" maxlength="100" pattern="[A-Za-z0-9_.\-]{3,100}"
+                     placeholder="leave blank to keep">
+            </label>
+            <label>New password
+              <input id="cred-password" type="password" autocomplete="new-password" minlength="8"
+                     placeholder="leave blank to keep">
+            </label>
+            <label>Role
+              <select id="cred-role">
+                <option value="">keep</option>
+                <option value="admin">admin</option>
+                <option value="super_admin">super_admin</option>
+              </select>
+            </label>
+            <label>Security level (1&#8211;5)
+              <input id="cred-level" type="number" min="1" max="5" placeholder="1 = lowest, 5 = highest">
+            </label>
+          </div>
+          <div class="form-actions">
+            <button class="btn primary" type="submit">Save</button>
+            <button class="btn ghost" type="button" id="btn-cred-cancel">Cancel</button>
+            <span class="muted small">Only the super admin may change a username or password.</span>
+          </div>
+        </form>
+
+        <div class="card">
+          <div class="card-head"><h3>Accounts</h3><span id="users-count" class="muted small"></span></div>
+          <table>
+            <thead><tr><th>ID</th><th>Username</th><th>Name</th><th>Role</th><th>Status</th><th>Level</th><th>Created</th><th>Approved by</th><th></th></tr></thead>
+            <tbody id="users-body"><tr><td colspan="9" class="muted">loading&#8230;</td></tr></tbody>
+          </table>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h3>Password reset requests</h3><span id="reset-count" class="muted small"></span></div>
+          <table>
+            <thead><tr><th>ID</th><th>Username</th><th>Reason</th><th>Status</th><th>Created</th><th>Resolved by</th><th></th></tr></thead>
+            <tbody id="reset-body"><tr><td colspan="7" class="muted">loading&#8230;</td></tr></tbody>
+          </table>
         </div>
       </section>
 

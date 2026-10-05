@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
-from .api import attendance, auth, cameras, students, system
+from .api import alerts, attendance, auth, cameras, periods, students, system
 from .api.ws import router as ws_router
 from .config import settings
 from .logging_config import configure as configure_logging
@@ -85,6 +85,8 @@ app.include_router(auth.router)
 app.include_router(students.router)
 app.include_router(cameras.router)
 app.include_router(attendance.router)
+app.include_router(periods.router)
+app.include_router(alerts.router)
 app.include_router(system.router)
 app.include_router(ws_router)
 

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from ..models import Camera, RecognitionLog, Student
 from ..schemas import (
+    AttendanceSessionOut,
     LiveOut,
     RecognitionLogOut,
     StudentAttendanceOut,
@@ -20,6 +21,30 @@ from ..timeutil import utcnow
 from .deps import get_current_admin, get_db
 
 router = APIRouter(prefix="/attendance", tags=["attendance"])
+
+
+@router.post("/sessions/{session_id}/close", response_model=AttendanceSessionOut,
+             summary="Force-close an ongoing attendance session")
+def close_session(
+    session_id: int,
+    _: str = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+) -> AttendanceSessionOut:
+    from ..models import AttendanceSession as _AS
+    session = db.get(_AS, session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail=f"session {session_id} not found")
+    if session.status == "completed":
+        # already closed — return current representation
+        camera_names = svc._camera_name_map(db)  # type: ignore[attr-defined]
+        period_names = svc._period_name_map(db)  # type: ignore[attr-defined]
+        return svc._session_out(session, camera_names, period_names)  # type: ignore[attr-defined]
+    svc._close_session(db, session, utcnow(), camera_id=None)
+    db.commit()
+    db.refresh(session)
+    camera_names = svc._camera_name_map(db)  # type: ignore[attr-defined]
+    period_names = svc._period_name_map(db)  # type: ignore[attr-defined]
+    return svc._session_out(session, camera_names, period_names)  # type: ignore[attr-defined]
 
 
 def _parse_day(value: str | None) -> date:
@@ -110,6 +135,43 @@ def recognition_logs(
         for r in rows
     ]
     return {"items": items, "limit": limit, "offset": offset}
+
+
+@router.get("/period/{period_id}/summary", response_model=SummaryOut,
+            summary="Per-period attendance summary")
+def period_summary(
+    period_id: int,
+    date_str: str | None = Query(default=None, alias="date",
+                                 description="YYYY-MM-DD (defaults to today, local TZ)"),
+    include_absent: bool = Query(default=False,
+                                 description="Include students with zero sessions in this period"),
+    _: str = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+) -> SummaryOut:
+    try:
+        return svc.period_summary(db, period_id, _parse_day(date_str), include_absent=include_absent)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/period/{period_id}/{student_id}", response_model=StudentAttendanceOut,
+            summary="Per-period attendance for one student")
+def period_student_attendance(
+    period_id: int,
+    student_id: int,
+    date_str: str | None = Query(default=None, alias="date",
+                                 description="YYYY-MM-DD (defaults to today)"),
+    _: str = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+) -> StudentAttendanceOut:
+    from ..models import Period as _Period
+
+    if db.get(_Period, period_id) is None:
+        raise HTTPException(status_code=404, detail=f"period {period_id} not found")
+    student = db.get(Student, student_id)
+    if student is None:
+        raise HTTPException(status_code=404, detail=f"student {student_id} not found")
+    return svc.period_student_attendance(db, period_id, student, _parse_day(date_str))
 
 
 @router.get("/{student_id}", response_model=StudentAttendanceOut,

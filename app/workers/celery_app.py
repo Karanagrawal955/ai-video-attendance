@@ -41,6 +41,21 @@ celery_app.conf.update(
         "camera.run": {"queue": "camera_slot_dynamic"},  # overridden per call
         "jobs.*": {"queue": "jobs"},
     },
+    beat_schedule={
+        "close-stale-sessions-daily": {
+            "task": "jobs.close_stale_sessions",
+            "schedule": 86400.0,  # once daily
+            "args": (1,),
+        },
+        "reap-dead-cameras": {
+            "task": "jobs.reap_dead_cameras",
+            "schedule": 60.0,  # every minute
+        },
+        "check-period-deviations": {
+            "task": "jobs.check_period_deviations",
+            "schedule": 300.0,  # every 5 minutes
+        },
+    },
 )
 
 

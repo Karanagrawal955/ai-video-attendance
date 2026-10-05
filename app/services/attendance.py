@@ -105,15 +105,44 @@ def _close_session(
     )
 
 
+def _find_matching_period(db: Session, entry_time: datetime, student_section: str | None) -> "Period | None":
+    """Return the first Period whose window contains entry_time (local time)."""
+    from ..models import Period  # late import to avoid circular
+
+    local_dt = to_local(entry_time)
+    local_t = local_dt.time()
+    weekday = local_dt.weekday()  # Mon=0
+    bit = 1 << weekday
+    periods = db.scalars(select(Period).order_by(Period.start_time.asc())).all()
+    best: Period | None = None
+    for p in periods:
+        # section filter: NULL period applies to all; otherwise exact match
+        if p.section is not None and p.section != student_section:
+            continue
+        if not (p.days_bitmask & bit):
+            continue
+        # half-open interval [start, end)
+        if p.start_time <= local_t < p.end_time:
+            best = p
+            break
+    return best
+
+
 def _open_session(
     db: Session, student_id: int, camera: Camera, entry_time: datetime
 ) -> AttendanceSession:
+    from ..models import Student as _Student
+
+    student = db.get(_Student, student_id)
+    section = student.section if student is not None else None
+    period = _find_matching_period(db, entry_time, section)
     session = AttendanceSession(
         student_id=student_id,
         camera_in_id=camera.id,
         entry_time=entry_time,
         date=local_date(entry_time),
         status="ongoing",
+        period_id=period.id if period is not None else None,
     )
     db.add(session)
     db.flush()
@@ -124,6 +153,7 @@ def _open_session(
             "student_id": student_id,
             "camera_id": camera.id,
             "date": session.date.isoformat(),
+            "period_id": session.period_id,
         },
     )
     return session
@@ -169,7 +199,26 @@ def process_recognition(
 
 
 # ---------------------------------------------------------------- queries
-def _session_out(session: AttendanceSession, camera_names: dict[int, str]) -> AttendanceSessionOut:
+def _period_name_map(db: Session) -> dict[int, str]:
+    from ..models import Period as _Period
+
+    return {
+        int(pid): (name or "")
+        for pid, name in db.execute(select(_Period.id, _Period.name)).all()
+    }
+
+
+def _session_out(
+    session: AttendanceSession,
+    camera_names: dict[int, str],
+    period_names: dict[int, str] | None = None,
+) -> AttendanceSessionOut:
+    pn = None
+    if period_names is not None and session.period_id is not None:
+        pn = period_names.get(session.period_id)
+    elif session.period_id is not None:
+        # fallback: try to load directly if map not provided
+        pn = None
     return AttendanceSessionOut(
         id=session.id,
         student_id=session.student_id,
@@ -182,6 +231,8 @@ def _session_out(session: AttendanceSession, camera_names: dict[int, str]) -> At
         date=session.date,
         status=session.status,  # type: ignore[arg-type]
         total_duration=session.total_duration,
+        period_id=session.period_id,
+        period_name=pn,
     )
 
 
@@ -216,6 +267,7 @@ def student_attendance(
         .all()
     )
     camera_names = _camera_name_map(db)
+    period_names = _period_name_map(db)
     now = utcnow()
     totals = SessionTotals(
         entries=len(sessions),
@@ -235,7 +287,7 @@ def student_attendance(
             section=student.section,
         ),
         date=day,
-        sessions=[_session_out(s, camera_names) for s in sessions],
+        sessions=[_session_out(s, camera_names, period_names) for s in sessions],
         totals=totals,
     )
 
@@ -344,3 +396,135 @@ def live_sessions(db: Session) -> list[LiveSessionOut]:
             )
         )
     return out
+
+
+# ------------------------------------------------------------------ periods
+def period_summary(
+    db: Session, period_id: int, day: date, *, include_absent: bool = False
+) -> SummaryOut:
+    """Per-period attendance summary for a given date."""
+    from ..models import Period as _Period
+
+    period = db.get(_Period, period_id)
+    if period is None:
+        raise ValueError(f"period {period_id} not found")
+    sessions = (
+        db.scalars(
+            select(AttendanceSession)
+            .where(
+                AttendanceSession.period_id == period_id,
+                AttendanceSession.date == day,
+            )
+            .order_by(AttendanceSession.entry_time.asc())
+        )
+        .all()
+    )
+    # Filter students by section if period has one
+    all_students = list(db.scalars(select(Student)).all())
+    if period.section is not None:
+        all_students = [s for s in all_students if s.section == period.section]
+    students = {int(s.id): s for s in all_students}
+    now = utcnow()
+
+    by_student: dict[int, list[AttendanceSession]] = {}
+    for s in sessions:
+        by_student.setdefault(s.student_id, []).append(s)
+
+    rows: list[SummaryRow] = []
+    grand_seconds = 0
+    ongoing_count = 0
+    completed_count = 0
+
+    student_ids = list(students.keys()) if include_absent else list(by_student.keys())
+    for sid in sorted(student_ids):
+        student = students.get(sid)
+        if student is None:
+            continue
+        s_sessions = by_student.get(sid, [])
+        total = sum(_session_seconds(s, now) for s in s_sessions)
+        ongoing = any(s.status == "ongoing" for s in s_sessions)
+        rows.append(
+            SummaryRow(
+                student_id=sid,
+                name=student.name,
+                registration_no=student.registration_no,
+                section=student.section,
+                entries=len(s_sessions),
+                exits=sum(1 for s in s_sessions if s.status == "completed"),
+                first_entry=(
+                    _as_utc(min((s.entry_time for s in s_sessions), default=None))
+                    if s_sessions
+                    else None
+                ),
+                last_exit=_as_utc(
+                    max(
+                        (s.exit_time for s in s_sessions if s.exit_time is not None),
+                        default=None,
+                    )
+                )
+                if any(s.exit_time is not None for s in s_sessions)
+                else None,
+                total_seconds=total,
+                ongoing=ongoing,
+            )
+        )
+        grand_seconds += total
+        ongoing_count += sum(1 for s in s_sessions if s.status == "ongoing")
+        completed_count += sum(1 for s in s_sessions if s.status == "completed")
+
+    return SummaryOut(
+        date=day,
+        timezone=str(to_local(utcnow()).tzinfo),
+        students=rows,
+        totals=SummaryTotals(
+            present_students=sum(1 for r in rows if r.entries > 0),
+            ongoing_sessions=ongoing_count,
+            completed_sessions=completed_count,
+            total_seconds=grand_seconds,
+        ),
+    )
+
+
+def period_student_attendance(
+    db: Session, period_id: int, student: Student, day: date
+) -> StudentAttendanceOut:
+    sessions = (
+        db.scalars(
+            select(AttendanceSession)
+            .where(
+                AttendanceSession.student_id == student.id,
+                AttendanceSession.period_id == period_id,
+                AttendanceSession.date == day,
+            )
+            .order_by(AttendanceSession.entry_time.asc())
+        )
+        .all()
+    )
+    camera_names = _camera_name_map(db)
+    period_names = _period_name_map(db)
+    now = utcnow()
+    totals = SessionTotals(
+        entries=len(sessions),
+        exits=sum(1 for s in sessions if s.status == "completed"),
+        total_seconds=sum(_session_seconds(s, now) for s in sessions),
+        first_entry=_as_utc(sessions[0].entry_time) if sessions else None,
+        last_exit=_as_utc(
+            max(
+                (s.exit_time for s in sessions if s.exit_time is not None),
+                default=None,
+            )
+        )
+        if any(s.exit_time is not None for s in sessions)
+        else None,
+    )
+    return StudentAttendanceOut(
+        student=StudentSummary(
+            id=student.id,
+            name=student.name,
+            registration_no=student.registration_no,
+            section=student.section,
+        ),
+        date=day,
+        sessions=[_session_out(s, camera_names, period_names) for s in sessions],
+        totals=totals,
+    )
