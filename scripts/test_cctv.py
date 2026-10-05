@@ -281,7 +281,11 @@ def main() -> int:
         "synthetic clip built from enrolled photos: shows the flow, "
         "not real-CCTV accuracy"
         if args.video.name == "test_multi.mp4"
-        else f"real camera footage ({args.video.name}) - accuracy needs ground truth"
+        else f"real camera footage ({args.video.name})"
+    ) + (
+        " - scored against ground truth"
+        if args.ground_truth
+        else " - no ground truth supplied, no accuracy claim"
     )
     print(f"CLIP : {clip_frames_line(total_frames, fps, width, height)}")
 
@@ -515,7 +519,9 @@ def main() -> int:
         "note": (
             "Enrollment videos must never be used as the accuracy test set."
             if not gt
-            else "Ground truth supplied: metrics below are identity-level."
+            else "Ground truth supplied: metrics below are identity-level. "
+            "If this clip shares a recording session with the enrollment video "
+            "it is easier than real CCTV - treat the numbers as an upper bound."
         ),
         "students": index.student_count,
         "embeddings": index.embedding_count,
