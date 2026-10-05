@@ -26,15 +26,27 @@ class QualityResult:
 
 
 def _analyze_face(photo_bytes: bytes) -> dict:
-    """Call inference service to get face detection + landmarks + pose."""
+    """Call inference service to get face detection + landmarks + pose.
+
+    The service answers ``{"results": [[face, ...], ...]}`` (one list of faces
+    per frame); older stubs answered ``{"results": [{"faces": [...]}]}``.
+    Both are accepted so the quality gate works against either.
+    """
     try:
         results = inference_client.infer_frames([photo_bytes])
-        if not results or not results.get("results") or not results["results"][0]:
-            return {"faces": []}
-        return results["results"][0]
     except inference_client.InferenceError as exc:
         logger.warning("inference error during quality check: %s", exc)
         return {"faces": []}
+
+    frames = (results or {}).get("results") or []
+    if not frames:
+        return {"faces": []}
+    first = frames[0]
+    if isinstance(first, dict):  # {"faces": [...]} shape
+        return first
+    if not first:  # frame with no faces
+        return {"faces": []}
+    return {"faces": first}  # [[face, ...]] shape (live service)
 
 
 def check_photo_quality(photo_bytes: bytes) -> QualityResult:
