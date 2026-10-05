@@ -95,3 +95,13 @@ import_report*.csv
 *.zip
 setup_clean.txt
 build_handoff.py
+
+# Generated reports / downloaded face videos (contain names + registration
+# numbers + frames -> local only, never committed)
+eval/reports/
+data/enrollment/
+
+# The two CLI sources above start with "test_" like the debug artifacts, but
+# they are source code - keep them out of the artifact ignore rules.
+!tests/test_*.py
+!scripts/test_cctv.py
